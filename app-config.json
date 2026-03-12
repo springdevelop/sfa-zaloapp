@@ -1,0 +1,17 @@
+{
+  "app": {
+    "title": " Quản lý Sale - Thịnh Vượng Toàn Cầu",
+    "textColor": {
+      "light": "black",
+      "dark": "white"
+    },
+    "statusBar": "transparent",
+    "actionBarHidden": true,
+    "hideIOSSafeAreaBottom": true,
+    "hideAndroidBottomNavigationBar": false
+  },
+  "permissions": ["getLocation", "chooseImage", "getUserInfo"],
+  "listCSS": [],
+  "listSyncJS": [],
+  "listAsyncJS": []
+}
