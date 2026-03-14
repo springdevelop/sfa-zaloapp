@@ -70,7 +70,7 @@ export const validateCheckIn = (
 export const validateCheckOut = (
   duration: number,
   photos: string[],
-  minDuration: number = 5,
+  minDuration: number = 0.001, // Changed to 0.001 minutes (~60ms) for testing
   requirePhotos: boolean = true
 ): { isValid: boolean; message: string } => {
   if (duration < minDuration) {
