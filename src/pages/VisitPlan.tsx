@@ -3,6 +3,7 @@ import { Page, Box, Text, Button, Select, useNavigate } from '../components/UICo
 import { useRecoilState, useRecoilValue } from 'recoil';
 import { visitTargetsState, filterState, currentVisitState } from '../state/atoms';
 import { visitService } from '../services/visitService';
+import { currentVisitService } from '../services/currentVisitService';
 import {
   getStatusBadge,
   calculateProgress,
@@ -20,19 +21,21 @@ const VisitPlan: React.FC = () => {
   const navigate = useNavigate();
   const [visitTargets, setVisitTargets] = useRecoilState(visitTargetsState);
   const [filter, setFilter] = useRecoilState(filterState);
-  const currentVisit = useRecoilValue(currentVisitState);
+  const [currentVisit, setCurrentVisit] = useRecoilState(currentVisitState);
   const [loading, setLoading] = useState(true);
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
 
   useEffect(() => {
     loadVisitTargets();
     loadUserLocation();
+    loadCurrentVisit();
     
     // Reload data when page becomes visible again
     const handleVisibilityChange = () => {
       if (!document.hidden) {
         console.log('📋 VisitPlan visible, reloading data...');
         loadVisitTargets();
+        loadCurrentVisit();
       }
     };
     
@@ -69,6 +72,18 @@ const VisitPlan: React.FC = () => {
       setUserLocation(location);
     } catch (error) {
       console.error('Error getting user location:', error);
+    }
+  };
+
+  const loadCurrentVisit = async () => {
+    try {
+      const visit = await currentVisitService.getCurrentVisit();
+      if (visit) {
+        console.log('✅ Loaded current visit from storage:', visit);
+        setCurrentVisit(visit);
+      }
+    } catch (error) {
+      console.error('Error loading current visit:', error);
     }
   };
 

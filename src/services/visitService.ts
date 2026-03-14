@@ -7,12 +7,15 @@ interface CheckInData {
   customer_id: number;
   checkin_latitude: number;
   checkin_longitude: number;
+  visit_time: string;
+  visit_date?: string;
+  month?: string;
 }
 
 interface CheckOutData {
   checkout_latitude: number;
   checkout_longitude: number;
-  photos: string[];
+  photos: File[];
   notes?: string;
 }
 
@@ -107,7 +110,7 @@ export const visitService = {
             checkout_latitude: data.checkout_latitude,
             checkout_longitude: data.checkout_longitude,
             notes: data.notes,
-            photos: data.photos,
+            photos: [], // Photos are files, not stored in mock
             photos_count: data.photos?.length || 0,
             status: 'completed',
             customer: visit?.customer,
@@ -125,7 +128,46 @@ export const visitService = {
         }, 500);
       });
     }
-    return api.post(`/visits/${visitId}/check-out`, data);
+    
+    console.log('🔵 visitService.checkOut called with:');
+    console.log('   Visit ID:', visitId);
+    console.log('   Photos count:', data.photos.length);
+    console.log('   API endpoint:', `/visits/${visitId}/check-out`);
+    
+    try {
+      // Create FormData for multipart/form-data upload
+      const formData = new FormData();
+      formData.append('checkout_latitude', data.checkout_latitude.toString());
+      formData.append('checkout_longitude', data.checkout_longitude.toString());
+      if (data.notes) {
+        formData.append('notes', data.notes);
+      }
+      
+      // Append photos using Laravel array notation photos[]
+      // Each file must be appended separately with the same key
+      data.photos.forEach((photo, index) => {
+        formData.append('photos[]', photo, photo.name);
+        console.log(`   ✅ Appending photos[]:`, {
+          index,
+          name: photo.name,
+          type: photo.type,
+          size: `${(photo.size / 1024).toFixed(2)}KB`
+        });
+      });
+      
+      // CRITICAL: Remove Content-Type header to let browser set multipart boundary
+      const result = await api.post(`/visits/${visitId}/check-out`, formData, {
+        headers: {
+          'Content-Type': undefined  // Remove default application/json header
+        }
+      });
+      console.log('✅ Checkout API response:', result);
+      return result;
+    } catch (error: any) {
+      console.error('❌ Checkout API error in service:', error);
+      console.error('   Response:', error.response?.data);
+      throw error;
+    }
   },
 
   // Get visit history
@@ -136,5 +178,42 @@ export const visitService = {
       });
     }
     return api.get('/visits/history', { params });
+  },
+
+  // Get current ongoing visit from backend
+  getCurrentVisit: async (): Promise<Visit | null> => {
+    if (USE_MOCK_DATA) {
+      // Find any in_progress visit in mock data
+      const inProgressVisit = mockVisitHistory.find(v => v.status === 'in_progress');
+      return Promise.resolve(inProgressVisit || null);
+    }
+    try {
+      console.log('🔍 Fetching current visit from backend...');
+      const response = await api.get('/visits/current');
+      console.log('✅ Current visit response:', response);
+      
+      // Backend returns { current_visit: null } when no visit
+      if (response && response.current_visit === null) {
+        console.log('ℹ️ Backend returned current_visit: null');
+        return null;
+      }
+      
+      // Backend returns visit object directly when there is an active visit
+      if (response && response.id) {
+        console.log('✅ Found active visit:', response.id, 'status:', response.status);
+        return response;
+      }
+      
+      console.log('ℹ️ No current visit found');
+      return null;
+    } catch (error: any) {
+      // If 404, no current visit
+      if (error.response?.status === 404) {
+        console.log('ℹ️ No current visit (404)');
+        return null;
+      }
+      console.error('❌ Error fetching current visit:', error);
+      throw error;
+    }
   },
 };

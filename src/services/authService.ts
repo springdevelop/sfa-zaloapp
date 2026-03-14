@@ -1,8 +1,6 @@
 import { setStorage, getStorage, removeStorage } from 'zmp-sdk';
-import axios from 'axios';
+import api from './api';
 
-const API_BASE_URL = 'http://localhost:8000/api';
-// const API_BASE_URL = 'https://zaloapp.thinhvuongtoancau.vn/api';
 const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'user_info';
 
@@ -24,26 +22,21 @@ export const authService = {
   loginWithPhone: async (phone: string, password: string): Promise<LoginResponse> => {
     try {
       console.log('🔐 Logging in with phone...');
+      console.log('📱 Phone:', phone);
       
       // Send phone and password to backend for authentication
-      const response = await axios.post<{ success: boolean; data: LoginResponse }>(
-        `${API_BASE_URL}/login`,
+      const response = await api.post<{ success: boolean; data: LoginResponse }>(
+        '/login',
         {
           phone,
           password,
-        },
-        {
-          timeout: 10000,
-          headers: {
-            'Content-Type': 'application/json',
-          },
         }
       );
       
-      console.log('✅ Backend auth response:', response.data);
+      console.log('✅ Backend auth response:', response);
       
       // Extract token and user from response
-      let loginData = response.data.data;
+      let loginData = (response as any).data;
       if (typeof loginData === 'string') {
         loginData = JSON.parse(loginData);
       }
@@ -58,6 +51,13 @@ export const authService = {
       return { token, user };
     } catch (error: any) {
       console.error('❌ Login failed:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+        url: error.config?.url,
+        baseURL: error.config?.baseURL
+      });
       throw new Error(
         error.response?.data?.message || 
         error.message || 

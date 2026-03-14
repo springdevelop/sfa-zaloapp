@@ -1,6 +1,106 @@
 import { chooseImage, authorize } from 'zmp-sdk';
 
 /**
+ * Compress and resize image file
+ * @param file - Original image file
+ * @param maxWidth - Maximum width (default: 1024px)
+ * @param maxHeight - Maximum height (default: 1024px)
+ * @param quality - JPEG quality 0-1 (default: 0.8)
+ * @returns Compressed image file
+ */
+export const compressImage = async (
+  file: File,
+  maxWidth: number = 1024,
+  maxHeight: number = 1024,
+  quality: number = 0.8
+): Promise<File> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+      const img = new Image();
+      
+      img.onload = () => {
+        // Calculate new dimensions while maintaining aspect ratio
+        let width = img.width;
+        let height = img.height;
+        
+        if (width > maxWidth || height > maxHeight) {
+          const aspectRatio = width / height;
+          
+          if (width > height) {
+            width = maxWidth;
+            height = width / aspectRatio;
+          } else {
+            height = maxHeight;
+            width = height * aspectRatio;
+          }
+        }
+        
+        // Create canvas and draw resized image
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Failed to get canvas context'));
+          return;
+        }
+        
+        // Use better image smoothing
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Convert to blob
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(new Error('Failed to compress image'));
+              return;
+            }
+            
+            // Create new file from blob
+            const compressedFile = new File(
+              [blob],
+              file.name.replace(/\.\w+$/, '.jpg'), // Convert to .jpg
+              {
+                type: 'image/jpeg',
+                lastModified: Date.now(),
+              }
+            );
+            
+            const originalSize = (file.size / 1024).toFixed(2);
+            const compressedSize = (compressedFile.size / 1024).toFixed(2);
+            const reduction = (((file.size - compressedFile.size) / file.size) * 100).toFixed(1);
+            
+            console.log(`📦 Compressed: ${originalSize}KB → ${compressedSize}KB (↓${reduction}%)`);
+            console.log(`📐 Resized: ${img.width}x${img.height} → ${width}x${height}`);
+            
+            resolve(compressedFile);
+          },
+          'image/jpeg',
+          quality
+        );
+      };
+      
+      img.onerror = () => {
+        reject(new Error('Failed to load image'));
+      };
+      
+      img.src = e.target?.result as string;
+    };
+    
+    reader.onerror = () => {
+      reject(new Error('Failed to read file'));
+    };
+    
+    reader.readAsDataURL(file);
+  });
+};
+
+/**
  * Request camera/photo permission
  */
 const requestPhotoPermission = async (): Promise<boolean> => {

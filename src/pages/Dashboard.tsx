@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Page, Box, Text } from '../components/UIComponents';
+import { Page, Box, Text, Button, useNavigate } from '../components/UIComponents';
+import { useRecoilState } from 'recoil';
+import { currentVisitState } from '../state/atoms';
 import { dashboardService } from '../services/dashboardService';
-import { formatDate } from '../utils/date';
+import { currentVisitService } from '../services/currentVisitService';
+import { formatDate, formatDateTime, calculateDuration, formatDuration } from '../utils/date';
 import { calculateProgress } from '../utils/helpers';
 
 interface DashboardStats {
@@ -19,17 +22,22 @@ interface DashboardStats {
 }
 
 const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [currentVisit, setCurrentVisit] = useRecoilState(currentVisitState);
+  const [visitDuration, setVisitDuration] = useState(0);
 
   useEffect(() => {
     loadDashboardData();
+    loadCurrentVisit();
     
     // Reload data when page becomes visible again
     const handleVisibilityChange = () => {
       if (!document.hidden) {
         console.log('📊 Dashboard visible, reloading data...');
         loadDashboardData();
+        loadCurrentVisit();
       }
     };
     
@@ -40,6 +48,17 @@ const Dashboard: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    // Update visit duration timer
+    if (currentVisit) {
+      const interval = setInterval(() => {
+        const duration = calculateDuration(currentVisit.checkin_time);
+        setVisitDuration(duration);
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [currentVisit]);
+
   const loadDashboardData = async () => {
     try {
       setLoading(true);
@@ -49,6 +68,14 @@ const Dashboard: React.FC = () => {
       console.error('Error loading dashboard:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadCurrentVisit = async () => {
+    const visit = await currentVisitService.getCurrentVisit();
+    if (visit) {
+      console.log('✅ Loaded current visit:', visit);
+      setCurrentVisit(visit);
     }
   };
 
@@ -91,6 +118,58 @@ const Dashboard: React.FC = () => {
             </Text>
           </div>
         </div>
+
+        {/* Current Visit Alert - Lượt thăm đang diễn ra */}
+        {currentVisit && (
+          <div
+            className="card"
+            style={{
+              background: 'linear-gradient(135deg, #FF6B6B 0%, #FF8E53 100%)',
+              border: 'none',
+              marginTop: '16px',
+              boxShadow: '0 4px 12px rgba(255, 107, 107, 0.3)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+              <span style={{ fontSize: '32px' }}>🔴</span>
+              <div style={{ flex: 1 }}>
+                <Text bold style={{ color: '#fff', fontSize: '16px', marginBottom: '4px', display: 'block' }}>
+                  Đang ghé thăm
+                </Text>
+                <Text style={{ color: '#fff', opacity: 0.9, fontSize: '14px' }}>
+                  {currentVisit.customer?.name}
+                </Text>
+              </div>
+            </div>
+            <div
+              style={{
+                background: 'rgba(255, 255, 255, 0.2)',
+                borderRadius: '8px',
+                padding: '12px',
+                marginBottom: '12px',
+              }}
+            >
+              <Text size="small" style={{ color: '#fff', opacity: 0.9, marginBottom: '4px', display: 'block' }}>
+                ⏱ Thời gian: <Text bold style={{ color: '#fff' }}>{formatDuration(visitDuration)}</Text>
+              </Text>
+              <Text size="small" style={{ color: '#fff', opacity: 0.9 }}>
+                🕐 Check-in: {formatDateTime(currentVisit.checkin_time)}
+              </Text>
+            </div>
+            <Button
+              size="small"
+              onClick={() => navigate(`/visit-detail/${currentVisit.visit_target_id}`)}
+              style={{
+                background: '#fff',
+                color: '#FF6B6B',
+                fontWeight: 'bold',
+                width: '100%',
+              }}
+            >
+              Tiếp tục thăm →
+            </Button>
+          </div>
+        )}
 
         {/* Stats Grid - Today & This Week */}
         <div className="stats-grid">

@@ -3,11 +3,12 @@ import { Page, Box, Text, Button, Input, useSnackbar, useParams, useNavigate } f
 import { useRecoilState } from 'recoil';
 import { currentVisitState, visitTargetsState, VisitTarget } from '../state/atoms';
 import { visitService } from '../services/visitService';
+import { currentVisitService } from '../services/currentVisitService';
 import {
   getCurrentLocation,
   validateLocation,
 } from '../utils/location';
-import { selectImages } from '../utils/image';
+import { compressImage } from '../utils/image';
 import {
   validateCheckIn,
   validateCheckOut,
@@ -27,7 +28,8 @@ const VisitDetail: React.FC = () => {
   const [processing, setProcessing] = useState(false);
 
   // Working state
-  const [photos, setPhotos] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<File[]>([]);
+  const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   const [duration, setDuration] = useState(0);
   const [timer, setTimer] = useState<NodeJS.Timeout | null>(null);
@@ -39,10 +41,21 @@ const VisitDetail: React.FC = () => {
     if (id) {
       loadVisitTarget();
     }
+    // Load current visit from storage
+    loadCurrentVisitFromStorage();
+    
     return () => {
       if (timer) clearInterval(timer);
     };
   }, [id]);
+
+  const loadCurrentVisitFromStorage = async () => {
+    const savedVisit = await currentVisitService.getCurrentVisit();
+    if (savedVisit) {
+      console.log('📂 Restored current visit from storage:', savedVisit);
+      setCurrentVisit(savedVisit);
+    }
+  };
 
   useEffect(() => {
     if (currentVisit && id && currentVisit.visit_target_id === parseInt(id)) {
@@ -94,39 +107,58 @@ const VisitDetail: React.FC = () => {
       }
 
       // Call check-in API
+      const now = new Date();
       const visit = await visitService.checkIn({
         visit_target_id: visitTarget.id,
         customer_id: visitTarget.customer_id,
         checkin_latitude: location.latitude,
         checkin_longitude: location.longitude,
+        visit_time: now.toISOString(),
+        visit_date: now.toISOString().split('T')[0],
+        month: now.toISOString().substring(0, 7),
       });
 
       setCurrentVisit(visit);
+      await currentVisitService.saveCurrentVisit(visit); // Save to storage
       openSnackbar({ text: 'Check-in thành công!', type: 'success' });
     } catch (error: any) {
       console.error('Error checking in:', error);
+      
+      // Check if error is due to existing ongoing visit
+      if (error.response?.data?.current_visit_id) {
+        const currentVisitId = error.response.data.current_visit_id;
+        console.warn('⚠️ Already have ongoing visit:', currentVisitId);
+        
+        // Try to load the ongoing visit from backend
+        try {
+          const ongoingVisit = await visitService.getCurrentVisit();
+          if (ongoingVisit) {
+            setCurrentVisit(ongoingVisit);
+            await currentVisitService.saveCurrentVisit(ongoingVisit);
+            openSnackbar({ 
+              text: 'Bạn đang có lượt thăm chưa hoàn thành. Vui lòng hoàn thành trước!', 
+              type: 'error' 
+            });
+            
+            // Navigate to the ongoing visit detail page
+            if (ongoingVisit.visit_target_id) {
+              setTimeout(() => {
+                navigate(`/visit-detail/${ongoingVisit.visit_target_id}`);
+              }, 1500);
+            }
+            return;
+          }
+        } catch (loadError) {
+          console.error('Error loading ongoing visit:', loadError);
+        }
+      }
+      
       openSnackbar({
         text: error.response?.data?.message || 'Lỗi check-in',
         type: 'error',
       });
     } finally {
       setProcessing(false);
-    }
-  };
-
-  const handleAddPhotos = async () => {
-    try {
-      console.log('📸 handleAddPhotos called, current photos:', photos.length);
-      const images = await selectImages(5 - photos.length);
-      console.log('✅ Got images:', images.length, images);
-      setPhotos([...photos, ...images]);
-      console.log('✅ Photos updated');
-      if (images.length > 0) {
-        openSnackbar({ text: `Đã thêm ${images.length} ảnh`, type: 'success' });
-      }
-    } catch (error) {
-      console.error('❌ Error selecting images:', error);
-      openSnackbar({ text: 'Không thể chọn ảnh', type: 'error' });
     }
   };
 
@@ -157,22 +189,34 @@ const VisitDetail: React.FC = () => {
     const fileArray = Array.from(files).slice(0, maxAdd);
     
     try {
-      const imageUrls: string[] = [];
+      openSnackbar({ text: 'Đang xử lý ảnh...', type: 'success' });
+      
+      // Compress images and create preview URLs
+      const compressedFiles: File[] = [];
+      const previewUrls: string[] = [];
+      
       for (let i = 0; i < fileArray.length; i++) {
         const file = fileArray[i];
-        console.log(`📸 Reading file ${i + 1}/${fileArray.length}:`, file.name);
+        console.log(`📸 Processing file ${i + 1}/${fileArray.length}:`, file.name, `(${(file.size / 1024).toFixed(2)}KB)`);
+        
+        // Compress image (max 1024px, 80% quality)
+        const compressedFile = await compressImage(file, 1024, 1024, 0.8);
+        compressedFiles.push(compressedFile);
+        
+        // Create preview URL
         const reader = new FileReader();
         const url = await new Promise<string>((resolve, reject) => {
           reader.onload = () => resolve(reader.result as string);
           reader.onerror = () => reject(new Error('Failed to read file'));
-          reader.readAsDataURL(file);
+          reader.readAsDataURL(compressedFile);
         });
-        imageUrls.push(url);
+        previewUrls.push(url);
       }
       
-      console.log('✅ Converted files to URLs:', imageUrls.length);
-      setPhotos([...photos, ...imageUrls]);
-      openSnackbar({ text: `Đã thêm ${imageUrls.length} ảnh`, type: 'success' });
+      console.log('✅ Compressed and added files:', compressedFiles.length);
+      setPhotos([...photos, ...compressedFiles]);
+      setPhotoPreviewUrls([...photoPreviewUrls, ...previewUrls]);
+      openSnackbar({ text: `Đã thêm ${compressedFiles.length} ảnh`, type: 'success' });
       
       // Reset input value to allow selecting the same file again
       e.target.value = '';
@@ -184,6 +228,7 @@ const VisitDetail: React.FC = () => {
 
   const handleRemovePhoto = (index: number) => {
     setPhotos(photos.filter((_, i) => i !== index));
+    setPhotoPreviewUrls(photoPreviewUrls.filter((_, i) => i !== index));
   };
 
   const handleCheckOut = async () => {
@@ -191,28 +236,63 @@ const VisitDetail: React.FC = () => {
     
     try {
       setProcessing(true);
+      
+      console.log('🔴 Starting checkout process...');
+      console.log('⏱ Duration:', duration, 'minutes');
+      console.log('📸 Photos:', photos.length, 'items');
+      console.log('📝 Notes:', notes?.length || 0, 'chars');
 
       // Validate
       const validation = validateCheckOut(duration, photos);
+      console.log('✅ Validation result:', validation);
       if (!validation.isValid) {
+        console.warn('❌ Validation failed:', validation.message);
         openSnackbar({ text: validation.message, type: 'error' });
         return;
       }
 
       // Get GPS location
+      console.log('📍 Getting GPS location...');
       const location = await getCurrentLocation();
+      console.log('✅ GPS location:', location);
 
-      // Call check-out API
-      await visitService.checkOut(currentVisit.id, {
+      // Prepare checkout data
+      const checkoutData = {
         checkout_latitude: location.latitude,
         checkout_longitude: location.longitude,
         photos: photos,
-        notes: notes,
-      });
+        notes: notes || '',
+      };
+      console.log('📦 Checkout data:');
+      console.log('   Latitude:', checkoutData.checkout_latitude);
+      console.log('   Longitude:', checkoutData.checkout_longitude);
+      console.log('   Photos count:', checkoutData.photos.length);
+      console.log('   Notes:', checkoutData.notes);
 
-      // Update state
+      // Call check-out API
+      console.log('🌐 Calling checkout API for visit ID:', currentVisit.id);
+      console.log('🌐 API URL:', `/visits/${currentVisit.id}/check-out`);
+      const result = await visitService.checkOut(currentVisit.id, checkoutData);
+      console.log('✅ Checkout API success:', result);
+
+      // Clear state immediately
       setCurrentVisit(null);
+      await currentVisitService.clearCurrentVisit(); // Clear from storage
+      
+      // Verify no current visit on backend (wait for transaction to commit)
+      console.log('🔍 Verifying checkout completion with backend...');
+      await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms for backend to commit
+      const verifyVisit = await visitService.getCurrentVisit();
+      if (verifyVisit) {
+        console.warn('⚠️ Backend still has active visit after checkout:', verifyVisit.id);
+        // Force clear again
+        await currentVisitService.clearCurrentVisit();
+      } else {
+        console.log('✅ Backend confirmed no active visit');
+      }
+      
       setPhotos([]);
+      setPhotoPreviewUrls([]);
       setNotes('');
 
       // Refresh visit target
@@ -235,9 +315,32 @@ const VisitDetail: React.FC = () => {
       // Navigate back
       setTimeout(() => navigate('/visit-plan'), 1500);
     } catch (error: any) {
-      console.error('Error checking out:', error);
+      console.error('❌ CHECKOUT ERROR:', error);
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Status code:', error.response?.status);
+      console.error('❌ Response data:', error.response?.data);
+      console.error('❌ Validation errors:', error.response?.data?.errors);
+      console.error('❌ Full error object:', JSON.stringify(error.response?.data, null, 2));
+      
+      let errorMessage = 'Lỗi check-out';
+      
+      // Check for validation errors (Laravel format)
+      if (error.response?.data?.errors) {
+        const errors = error.response.data.errors;
+        const firstError = Object.values(errors)[0];
+        if (Array.isArray(firstError) && firstError.length > 0) {
+          errorMessage = firstError[0];
+        }
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       openSnackbar({
-        text: error.response?.data?.message || 'Lỗi check-out',
+        text: errorMessage,
         type: 'error',
       });
     } finally {
@@ -402,7 +505,7 @@ const VisitDetail: React.FC = () => {
                   marginBottom: '12px',
                 }}
               >
-                {photos.map((photo, index) => (
+                {photoPreviewUrls.map((photoUrl, index) => (
                   <div
                     key={index}
                     style={{
@@ -415,7 +518,7 @@ const VisitDetail: React.FC = () => {
                     }}
                   >
                     <img
-                      src={photo}
+                      src={photoUrl}
                       alt={`Photo ${index + 1}`}
                       style={{
                         position: 'absolute',
@@ -426,7 +529,7 @@ const VisitDetail: React.FC = () => {
                         objectFit: 'cover',
                       }}
                       onError={(e) => {
-                        console.error('Image load error:', photo);
+                        console.error('Image load error:', photoUrl);
                         e.currentTarget.style.display = 'none';
                       }}
                     />
