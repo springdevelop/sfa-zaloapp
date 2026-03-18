@@ -41,6 +41,10 @@ const Login: React.FC = () => {
     }
   };
 
+  const handleOpenPolicy = () => {
+    navigate('/policy');
+  };
+
   return (
     <Page className="login-page">
       <Box
@@ -100,7 +104,7 @@ const Login: React.FC = () => {
               color: 'rgba(255, 255, 255, 0.8)',
             }}
           >
-            Nhập thông tin để tiếp tục
+            Sử dụng tài khoản công ty cung cấp để đăng nhập
           </Text>
         </Box>
 
@@ -210,6 +214,27 @@ const Login: React.FC = () => {
           >
             {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
           </Button>
+
+          {/* Policy Link */}
+          <Box
+            style={{
+              marginTop: '16px',
+              textAlign: 'center',
+            }}
+          >
+            <Box
+              onClick={handleOpenPolicy}
+              style={{
+                color: '#667eea',
+                fontSize: '14px',
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                display: 'inline-block',
+              }}
+            >
+              Xem chính sách của công ty
+            </Box>
+          </Box>
         </Box>
 
         {/* Footer */}
@@ -222,7 +247,7 @@ const Login: React.FC = () => {
           }}
         >
           <Text size="xSmall" style={{ color: 'rgba(255, 255, 255, 0.7)' }}>
-            © 2024 Thịnh Vượng Toàn Cầu
+            © 2026 Thịnh Vượng Toàn Cầu
           </Text>
         </Box>
       </Box>

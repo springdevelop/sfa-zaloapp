@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Page, Box, Text, List, Button, useNavigate, useSnackbar } from '../components/UIComponents';
-import { useRecoilValue } from 'recoil';
-import { userState } from '../state/atoms';
+import { useRecoilValue, useSetRecoilState } from 'recoil';
+import { userState, currentVisitState } from '../state/atoms';
 import { getUserInfo } from 'zmp-sdk';
 import { authService } from '../services/authService';
 import { USE_MOCK_DATA } from '../services/api';
@@ -16,6 +16,7 @@ const Profile: React.FC = () => {
   const navigate = useNavigate();
   const { openSnackbar } = useSnackbar();
   const user = useRecoilValue(userState);
+  const setCurrentVisit = useSetRecoilState(currentVisitState);
   const [userInfo, setUserInfo] = useState<ZaloUserInfo | null>(null);
   const [backendUser, setBackendUser] = useState<any>(null);
 
@@ -50,6 +51,10 @@ const Profile: React.FC = () => {
     try {
       await authService.logout();
       setBackendUser(null);
+      
+      // Clear current visit state
+      setCurrentVisit(null);
+      
       openSnackbar({ text: 'Đã đăng xuất', type: 'success' });
       
       // Navigate to login page

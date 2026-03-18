@@ -3,6 +3,7 @@ import { Route, Routes, Navigate } from 'react-router-dom';
 import { useSetRecoilState } from 'recoil';
 import { currentVisitState } from '../state/atoms';
 import { currentVisitService } from '../services/currentVisitService';
+import { authService } from '../services/authService';
 import BottomNavigation from './BottomNavigation';
 import ProtectedRoute from './ProtectedRoute';
 import Dashboard from '../pages/Dashboard';
@@ -11,17 +12,25 @@ import VisitDetail from '../pages/VisitDetail';
 import VisitHistory from '../pages/VisitHistory';
 import Profile from '../pages/Profile';
 import Login from '../pages/Login';
+import Policy from '../pages/Policy';
 
 const AppContent: React.FC = () => {
   const setCurrentVisit = useSetRecoilState(currentVisitState);
 
   useEffect(() => {
-    // Load current visit when app starts
+    // Load current visit when app starts (only if authenticated)
     loadCurrentVisitOnStartup();
   }, []);
 
   const loadCurrentVisitOnStartup = async () => {
     try {
+      // Check if user is authenticated first
+      const isAuth = await authService.isAuthenticated();
+      if (!isAuth) {
+        console.log('ℹ️ User not authenticated, skipping visit check');
+        return;
+      }
+
       console.log('🚀 App startup: Checking for ongoing visit...');
       const visit = await currentVisitService.getCurrentVisit();
       if (visit) {
@@ -30,15 +39,19 @@ const AppContent: React.FC = () => {
       } else {
         console.log('ℹ️ No ongoing visit found on startup');
       }
-    } catch (error) {
-      console.error('❌ Error loading current visit on startup:', error);
+    } catch (error: any) {
+      // Only log error if it's not an authentication error
+      if (error?.response?.status !== 401) {
+        console.error('❌ Error loading current visit on startup:', error);
+      }
     }
   };
 
   return (
     <Routes>
-      {/* Public route - Login */}
+      {/* Public routes */}
       <Route path="/login" element={<Login />} />
+      <Route path="/policy" element={<Policy />} />
       
       {/* Protected routes */}
       <Route path="/*" element={
